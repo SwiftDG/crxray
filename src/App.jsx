@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowRight,
-  Check,
   ChevronRight,
   CircleAlert,
+  Clock3,
   Eye,
   KeyRound,
   Layers3,
   LockKeyhole,
   ScanSearch,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react'
 import './App.css'
 
@@ -87,19 +88,52 @@ const profiles = {
   },
 }
 
+const profileList = Object.values(profiles)
+
+function getStoredHistory() {
+  try {
+    return JSON.parse(window.localStorage.getItem('crxray-history')) ?? []
+  } catch {
+    return []
+  }
+}
+
 function App() {
   const [input, setInput] = useState('')
   const [scanState, setScanState] = useState('idle')
   const [report, setReport] = useState(null)
+  const [inputError, setInputError] = useState('')
+  const [history, setHistory] = useState(getStoredHistory)
+
+  useEffect(() => {
+    window.localStorage.setItem('crxray-history', JSON.stringify(history))
+  }, [history])
+
+  const recordScan = (profile) => {
+    const entry = {
+      id: `${profile.id}-${Date.now()}`,
+      profileId: profile.id,
+      name: profile.name,
+      grade: profile.grade,
+      score: profile.score,
+      status: profile.status,
+      scannedAt: new Date().toISOString(),
+    }
+
+    setHistory((current) => [entry, ...current].slice(0, 8))
+  }
 
   const beginScan = (profile) => {
     setInput(profile.url)
+    setInputError('')
     setReport(null)
     setScanState('scanning')
 
     window.setTimeout(() => {
       setReport(profile)
       setScanState('complete')
+      recordScan(profile)
+
       window.setTimeout(() => {
         document.querySelector('#report')?.scrollIntoView({
           behavior: 'smooth',
@@ -111,6 +145,12 @@ function App() {
 
   const handleSubmit = (event) => {
     event.preventDefault()
+
+    if (!input.trim()) {
+      setInputError('Paste a Chrome Web Store link or extension ID to begin.')
+      return
+    }
+
     const isSaferSearch = /night|dark|reader|theme/i.test(input)
     beginScan(isSaferSearch ? profiles.safer : profiles.risky)
   }
@@ -118,9 +158,33 @@ function App() {
   const resetScan = () => {
     setInput('')
     setReport(null)
+    setInputError('')
     setScanState('idle')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  const viewHistoryReport = (entry) => {
+    const profile = profileList.find((item) => item.id === entry.profileId)
+    if (!profile) return
+
+    setInput(profile.url)
+    setReport(profile)
+    setInputError('')
+    setScanState('complete')
+
+    window.setTimeout(() => {
+      document.querySelector('#report')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 80)
+  }
+
+  const formatTime = (value) =>
+    new Date(value).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
 
   return (
     <main className="app-shell">
@@ -135,7 +199,8 @@ function App() {
 
         <nav className="main-nav" aria-label="Primary navigation">
           <a href="#scanner">Scanner</a>
-          <a href="#how-it-works">How it works</a>
+          <a href="#examples">Examples</a>
+          <a href="#history">History</a>
           <a href="#about">About</a>
         </nav>
 
@@ -161,7 +226,10 @@ function App() {
                 id="extension-link"
                 type="text"
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  setInput(event.target.value)
+                  setInputError('')
+                }}
                 placeholder="Paste an extension link or ID"
                 autoComplete="off"
               />
@@ -174,9 +242,13 @@ function App() {
                 )}
               </button>
             </div>
-            <p className="form-note">
-              CrxRay analyses public extension information. It does not install or run the extension.
-            </p>
+            {inputError ? (
+              <p className="input-error">{inputError}</p>
+            ) : (
+              <p className="form-note">
+                CrxRay analyses public extension information. It does not install or run the extension.
+              </p>
+            )}
           </form>
 
           <div className="example-row">
@@ -190,7 +262,7 @@ function App() {
           </div>
 
           {scanState === 'scanning' && (
-            <div className="scan-progress" role="status">
+            <div className="scan-progress" role="status" aria-live="polite">
               <span className="progress-pulse" />
               <span>Reading requested permissions</span>
               <span>Mapping risk signals</span>
@@ -258,7 +330,7 @@ function App() {
         </div>
       </section>
 
-      <section className="trust-strip" id="how-it-works">
+      <section className="trust-strip">
         <div>
           <ShieldCheck size={19} strokeWidth={1.7} />
           <span>Plain-English permission explanations</span>
@@ -326,9 +398,9 @@ function App() {
               <p className="eyebrow">What to do next</p>
               <h3>Make a safer choice.</h3>
               <ol>
-                {report.actions.map((action) => (
+                {report.actions.map((action, index) => (
                   <li key={action}>
-                    <Check size={15} strokeWidth={2.2} />
+                    <span className="action-number">0{index + 1}</span>
                     <span>{action}</span>
                   </li>
                 ))}
@@ -340,6 +412,91 @@ function App() {
           </div>
         </section>
       )}
+
+      <section className="examples-section" id="examples">
+        <div className="section-intro">
+          <div>
+            <p className="eyebrow">Curated examples</p>
+            <h2>Compare the context, not just the colour.</h2>
+          </div>
+          <p>
+            These profiles demonstrate how the same kind of permission can be expected
+            for one extension and excessive for another.
+          </p>
+        </div>
+
+        <div className="example-grid">
+          {profileList.map((profile) => (
+            <article className="example-card" key={profile.id}>
+              <div className="example-card-top">
+                <span className={`grade-chip grade-${profile.grade.toLowerCase()}`}>
+                  {profile.grade}
+                </span>
+                <span>{profile.label}</span>
+              </div>
+              <h3>{profile.name}</h3>
+              <p>{profile.summary}</p>
+              <div className="example-card-footer">
+                <span>{profile.permissions.length} explained signals</span>
+                <button type="button" onClick={() => beginScan(profile)}>
+                  Run demo <ArrowRight size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <p className="demo-disclosure">
+          Demo profiles are curated for this prototype to show the permission-risk assessment flow.
+        </p>
+      </section>
+
+      <section className="history-section" id="history">
+        <div className="history-heading">
+          <div>
+            <p className="eyebrow">This device</p>
+            <h2>Recent scans</h2>
+          </div>
+
+          {history.length > 0 && (
+            <button className="clear-history" type="button" onClick={() => setHistory([])}>
+              <Trash2 size={14} />
+              Clear history
+            </button>
+          )}
+        </div>
+
+        {history.length === 0 ? (
+          <div className="empty-history">
+            <Clock3 size={21} strokeWidth={1.6} />
+            <div>
+              <strong>No scans saved yet.</strong>
+              <p>Your recent CrxRay reports stay on this device only.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="history-list">
+            {history.map((entry) => (
+              <button
+                className="history-row"
+                type="button"
+                key={entry.id}
+                onClick={() => viewHistoryReport(entry)}
+              >
+                <span className={`grade-chip grade-${entry.grade.toLowerCase()}`}>
+                  {entry.grade}
+                </span>
+                <span className="history-name">
+                  <strong>{entry.name}</strong>
+                  <small>{entry.status}</small>
+                </span>
+                <span className="history-time">{formatTime(entry.scannedAt)}</span>
+                <ArrowRight size={16} />
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="method-section" id="about">
         <p className="eyebrow">Built for safer choices</p>
