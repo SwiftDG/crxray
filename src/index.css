@@ -31,3 +31,30 @@ input {
 button {
   cursor: pointer;
 }
+
+/* CrxRay mobile report safety */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#root * {
+  min-width: 0;
+}
+
+#root p,
+#root span,
+#root strong,
+#root small,
+#root a,
+#root code,
+#root li,
+#root h1,
+#root h2,
+#root h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
