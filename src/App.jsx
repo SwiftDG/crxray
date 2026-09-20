@@ -1,413 +1,320 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowRight,
-  ChevronRight,
-  CircleAlert,
-  Clock3,
-  Eye,
-  KeyRound,
-  Layers3,
-  LockKeyhole,
-  ScanSearch,
-  ShieldCheck,
-  Trash2,
+  ArrowRight, ChevronRight, CircleAlert, Clipboard, Clock3, Cookie,
+  Download, Eye, Globe2, History, KeyRound, Layers3, LockKeyhole,
+  Network, ScanSearch, ShieldCheck, Trash2,
 } from 'lucide-react'
 import './App.css'
 
-const profiles = {
-  risky: {
-    id: 'clipsaver',
-    name: 'ClipSaver Pro',
-    label: 'Coupon and shopping helper',
-    url: 'https://chromewebstore.google.com/detail/clipsaver-pro/demo-risky',
-    grade: 'D',
-    score: 78,
-    status: 'High risk signals found',
-    summary:
-      'This extension requests broad access to websites you visit, including access that is not needed for a coupon helper.',
-    permissions: [
-      {
-        icon: Eye,
-        title: 'Reads and changes data on every website',
-        level: 'High concern',
-        detail:
-          'This can let an extension view page content, alter what you see, and interact with forms across websites.',
-      },
-      {
-        icon: KeyRound,
-        title: 'Requests access to browser activity',
-        level: 'High concern',
-        detail:
-          'This permission can expose details about your open tabs and browsing behaviour.',
-      },
-      {
-        icon: Layers3,
-        title: 'Uses background activity',
-        level: 'Review needed',
-        detail:
-          'The extension can continue running while you browse, even when its popup is closed.',
-      },
-    ],
-    actions: [
-      'Do not install it until you can verify why it needs broad site access.',
-      'Check the publisher website, privacy policy, and recent reviews.',
-      'Look for a similar extension that asks for fewer permissions.',
-    ],
-  },
-  safer: {
-    id: 'nightreader',
-    name: 'Night Reader',
-    label: 'Dark reading mode',
-    url: 'https://chromewebstore.google.com/detail/night-reader/demo-safer',
-    grade: 'B',
-    score: 24,
-    status: 'Lower risk profile',
-    summary:
-      'This extension requests access that is broadly consistent with applying a dark theme to the pages you visit.',
-    permissions: [
-      {
-        icon: Eye,
-        title: 'Changes page appearance on websites',
-        level: 'Expected',
-        detail:
-          'A reading-mode extension needs page access to apply a dark theme or adjust text appearance.',
-      },
-      {
-        icon: LockKeyhole,
-        title: 'Stores settings in your browser',
-        level: 'Expected',
-        detail:
-          'This lets the extension remember choices such as theme, brightness, and enabled websites.',
-      },
-    ],
-    actions: [
-      'Review the extension publisher and recent user feedback before installing.',
-      'Check that the requested permissions match the feature you want.',
-      'Remove any extension you no longer use.',
-    ],
-  },
+const iconMap = {
+  eye: Eye, history: History, tabs: Layers3, cookies: Cookie, network: Network,
+  clipboard: Clipboard, downloads: Download, background: Clock3, shield: ShieldCheck,
+  privacy: Cookie, globe: Globe2,
 }
 
-const profileList = Object.values(profiles)
+const demos = [
+  {
+    id: 'clipsaver', kind: 'extension', name: 'ClipSaver Pro', label: 'Coupon and shopping helper',
+    url: 'https://chromewebstore.google.com/detail/clipsaver-pro/demo-risky',
+    grade: 'D', score: 78, status: 'High risk signals found',
+    summary: 'This extension requests broad access to websites you visit, including access that is not needed for a coupon helper.',
+    signals: [
+      { iconKey: 'eye', title: 'Reads and changes data on every website', level: 'High concern', detail: 'This can let an extension view page content, alter what you see, and interact with forms across websites.' },
+      { iconKey: 'history', title: 'Requests access to browser activity', level: 'High concern', detail: 'This permission can expose details about your open tabs and browsing behaviour.' },
+      { iconKey: 'background', title: 'Uses background activity', level: 'Review needed', detail: 'The extension can continue running while you browse, even when its popup is closed.' },
+    ],
+  },
+  {
+    id: 'nightreader', kind: 'extension', name: 'Night Reader', label: 'Dark reading mode',
+    url: 'https://chromewebstore.google.com/detail/night-reader/demo-safer',
+    grade: 'B', score: 24, status: 'Lower risk profile',
+    summary: 'This extension requests access that is broadly consistent with applying a dark theme to the pages you visit.',
+    signals: [
+      { iconKey: 'eye', title: 'Changes page appearance on websites', level: 'Expected', detail: 'A reading-mode extension needs page access to apply a dark theme or adjust text appearance.' },
+      { iconKey: 'shield', title: 'Stores settings in your browser', level: 'Expected', detail: 'This lets the extension remember choices such as theme, brightness, and enabled websites.' },
+    ],
+  },
+]
 
-function getStoredHistory() {
+function loadHistory() {
   try {
-    return JSON.parse(window.localStorage.getItem('crxray-history')) ?? []
+    const saved = JSON.parse(localStorage.getItem('crxray-history')) ?? []
+    return saved.filter((entry) => entry.report)
   } catch {
     return []
   }
 }
 
+function actionsFor(report) {
+  return report.kind === 'website'
+    ? [
+        'Open the site’s privacy settings before accepting cookies.',
+        'Reject optional cookies when that choice is available.',
+        'Review the detected tracking signals and share only what you are comfortable with.',
+      ]
+    : [
+        'Check that each permission matches what the extension claims to do.',
+        'Review the publisher, privacy policy, and recent user feedback.',
+        'Avoid installing the extension until broad or sensitive access is justified.',
+      ]
+}
+
+function extensionReport(data) {
+  return {
+    kind: 'extension',
+    name: data.name,
+    label: `Chrome extension · Manifest V${data.manifestVersion}`,
+    source: `Live Chrome Web Store manifest · ${data.extensionId}`,
+    grade: data.grade,
+    score: data.score,
+    status: data.status,
+    summary: data.summary,
+    signals: data.signals.map((signal) => ({
+      ...signal,
+      iconKey: signal.key === 'cookies' ? 'cookies' : signal.key === 'tabs' ? 'tabs' : signal.key,
+    })),
+  }
+}
+
+function websiteReport(data) {
+  return {
+    kind: 'website',
+    name: data.title,
+    label: data.host,
+    source: `Live public page scan · ${data.host}`,
+    grade: data.grade,
+    score: data.score,
+    status: data.status,
+    summary: data.summary,
+    signals: data.signals.map((signal) => ({
+      ...signal,
+      iconKey: signal.title.toLowerCase().includes('tracking') ? 'network' : 'privacy',
+    })),
+  }
+}
+
 function App() {
+  const [mode, setMode] = useState('extension')
   const [input, setInput] = useState('')
   const [scanState, setScanState] = useState('idle')
   const [report, setReport] = useState(null)
-  const [inputError, setInputError] = useState('')
-  const [history, setHistory] = useState(getStoredHistory)
+  const [error, setError] = useState('')
+  const [history, setHistory] = useState(loadHistory)
 
   useEffect(() => {
-    window.localStorage.setItem('crxray-history', JSON.stringify(history))
+    localStorage.setItem('crxray-history', JSON.stringify(history))
   }, [history])
 
-  const recordScan = (profile) => {
-    const entry = {
-      id: `${profile.id}-${Date.now()}`,
-      profileId: profile.id,
-      name: profile.name,
-      grade: profile.grade,
-      score: profile.score,
-      status: profile.status,
-      scannedAt: new Date().toISOString(),
-    }
-
-    setHistory((current) => [entry, ...current].slice(0, 8))
+  const saveReport = (nextReport) => {
+    setHistory((current) => [
+      {
+        id: `${Date.now()}-${nextReport.kind}`,
+        scannedAt: new Date().toISOString(),
+        report: nextReport,
+      },
+      ...current,
+    ].slice(0, 8))
   }
 
-  const beginScan = (profile) => {
-    setInput(profile.url)
-    setInputError('')
-    setReport(null)
-    setScanState('scanning')
+  const showReport = (nextReport, shouldSave = true) => {
+    setReport(nextReport)
+    setScanState('complete')
+    if (shouldSave) saveReport(nextReport)
 
     window.setTimeout(() => {
-      setReport(profile)
-      setScanState('complete')
-      recordScan(profile)
-
-      window.setTimeout(() => {
-        document.querySelector('#report')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        })
-      }, 80)
-    }, 1600)
+      document.querySelector('#report')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
   }
 
-  const handleSubmit = (event) => {
+  const runDemo = (demo) => {
+    setMode('extension')
+    setInput(demo.url)
+    setError('')
+    setReport(null)
+    setScanState('scanning')
+    window.setTimeout(() => showReport(demo), 1300)
+  }
+
+  const runLiveScan = async (event) => {
     event.preventDefault()
 
     if (!input.trim()) {
-      setInputError('Paste a Chrome Web Store link or extension ID to begin.')
+      setError(mode === 'extension'
+        ? 'Paste a Chrome Web Store link or extension ID to begin.'
+        : 'Paste a public website URL to begin.')
       return
     }
 
-    const isSaferSearch = /night|dark|reader|theme/i.test(input)
-    beginScan(isSaferSearch ? profiles.safer : profiles.risky)
+    setError('')
+    setReport(null)
+    setScanState('scanning')
+
+    try {
+      const endpoint = mode === 'extension'
+        ? `/api/scan-extension?input=${encodeURIComponent(input)}`
+        : `/api/scan-site?url=${encodeURIComponent(input)}`
+      const response = await fetch(endpoint)
+      const data = await response.json()
+
+      if (!response.ok) throw new Error(data.error || 'CrxRay could not complete this scan.')
+
+      showReport(mode === 'extension' ? extensionReport(data) : websiteReport(data))
+    } catch (scanError) {
+      setScanState('idle')
+      setError(scanError.message || 'CrxRay could not complete this scan.')
+    }
   }
 
   const resetScan = () => {
     setInput('')
+    setError('')
     setReport(null)
-    setInputError('')
     setScanState('idle')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const viewHistoryReport = (entry) => {
-    const profile = profileList.find((item) => item.id === entry.profileId)
-    if (!profile) return
-
-    setInput(profile.url)
-    setReport(profile)
-    setInputError('')
-    setScanState('complete')
-
-    window.setTimeout(() => {
-      document.querySelector('#report')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    }, 80)
-  }
-
-  const formatTime = (value) =>
-    new Date(value).toLocaleTimeString([], {
-      hour: 'numeric',
-      minute: '2-digit',
-    })
+  const scanHint = mode === 'extension'
+    ? 'Paste a Chrome Web Store link or extension ID'
+    : 'Paste a public website URL'
 
   return (
     <main className="app-shell">
       <header className="site-header">
         <a className="brand" href="#scanner" aria-label="CrxRay home">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-            <span />
-          </span>
+          <span className="brand-mark" aria-hidden="true"><span /><span /></span>
           <span>CrxRay</span>
         </a>
-
         <nav className="main-nav" aria-label="Primary navigation">
-          <a href="#scanner">Scanner</a>
-          <a href="#examples">Examples</a>
-          <a href="#history">History</a>
-          <a href="#about">About</a>
+          <a href="#scanner">Scanner</a><a href="#examples">Examples</a>
+          <a href="#history">History</a><a href="#about">About</a>
         </nav>
-
-        <a className="header-link" href="#scanner">
-          Start a scan <ChevronRight size={15} />
-        </a>
+        <a className="header-link" href="#scanner">Start a scan <ChevronRight size={15} /></a>
       </header>
 
       <section className="hero" id="scanner">
         <div className="hero-copy">
-          <p className="eyebrow">Extension safety, explained clearly</p>
-          <h1>Check before you install.</h1>
+          <p className="eyebrow">Browser privacy, explained clearly</p>
+          <h1>Check before you consent or install.</h1>
           <p className="hero-intro">
-            CrxRay reads the permissions a Chrome extension asks for and explains
-            what they could mean for your privacy and security.
+            CrxRay checks browser extensions and website privacy signals before you give them access.
           </p>
 
-          <form className="scanner-form" onSubmit={handleSubmit}>
-            <label htmlFor="extension-link">Chrome Web Store link or extension ID</label>
-            <div className="input-row">
-              <ScanSearch size={20} strokeWidth={1.8} aria-hidden="true" />
-              <input
-                id="extension-link"
-                type="text"
-                value={input}
-                onChange={(event) => {
-                  setInput(event.target.value)
-                  setInputError('')
-                }}
-                placeholder="Paste an extension link or ID"
-                autoComplete="off"
-              />
-              <button type="submit" disabled={scanState === 'scanning'}>
-                {scanState === 'scanning' ? 'Scanning' : 'Scan extension'}
-                {scanState === 'scanning' ? (
-                  <span className="button-loader" aria-hidden="true" />
-                ) : (
-                  <ArrowRight size={17} />
-                )}
-              </button>
-            </div>
-            {inputError ? (
-              <p className="input-error">{inputError}</p>
-            ) : (
-              <p className="form-note">
-                CrxRay analyses public extension information. It does not install or run the extension.
-              </p>
-            )}
-          </form>
-
-          <div className="example-row">
-            <span>Try a demo scan</span>
-            <button type="button" onClick={() => beginScan(profiles.risky)}>
-              Coupon helper
+          <div className="scanner-modes" role="tablist" aria-label="Scan type">
+            <button className={mode === 'extension' ? 'active' : ''} type="button" onClick={() => { setMode('extension'); setInput(''); setError('') }}>
+              Extension scan
             </button>
-            <button type="button" onClick={() => beginScan(profiles.safer)}>
-              Dark mode tool
+            <button className={mode === 'website' ? 'active' : ''} type="button" onClick={() => { setMode('website'); setInput(''); setError('') }}>
+              Website privacy
             </button>
           </div>
 
+          <form className="scanner-form" onSubmit={runLiveScan}>
+            <label htmlFor="scan-input">{scanHint}</label>
+            <div className="input-row">
+              {mode === 'extension' ? <ScanSearch size={20} strokeWidth={1.8} /> : <Globe2 size={20} strokeWidth={1.8} />}
+              <input
+                id="scan-input"
+                value={input}
+                onChange={(event) => { setInput(event.target.value); setError('') }}
+                placeholder={scanHint}
+                autoComplete="off"
+              />
+              <button type="submit" disabled={scanState === 'scanning'}>
+                {scanState === 'scanning' ? 'Scanning' : mode === 'extension' ? 'Scan extension' : 'Scan website'}
+                {scanState === 'scanning' ? <span className="button-loader" /> : <ArrowRight size={17} />}
+              </button>
+            </div>
+            <p className={error ? 'input-error' : 'form-note'}>
+              {error || (mode === 'extension'
+                ? 'CrxRay retrieves the public extension manifest. It does not install or run the extension.'
+                : 'CrxRay checks the public page source for consent and tracking signals.')}
+            </p>
+          </form>
+
+          <div className="example-row">
+            <span>Try a reliable demo</span>
+            <button type="button" onClick={() => runDemo(demos[0])}>Coupon helper</button>
+            <button type="button" onClick={() => runDemo(demos[1])}>Dark mode tool</button>
+          </div>
+
           {scanState === 'scanning' && (
-            <div className="scan-progress" role="status" aria-live="polite">
+            <div className="scan-progress" role="status">
               <span className="progress-pulse" />
-              <span>Reading requested permissions</span>
-              <span>Mapping risk signals</span>
+              <span>{mode === 'extension' ? 'Retrieving extension manifest' : 'Checking consent and tracker signals'}</span>
+              <span>Building report</span>
             </div>
           )}
         </div>
 
-        <div className="signal-stage" aria-label="Permission analysis preview">
-          <div className="stage-grid" />
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-
+        <div className="signal-stage" aria-label="Privacy analysis preview">
+          <div className="stage-grid" /><div className="orbit orbit-one" /><div className="orbit orbit-two" />
           <article className="extension-card">
             <div className="extension-card-top">
-              <span className="extension-icon">
-                <span />
-                <span />
-                <span />
-              </span>
-              <div>
-                <p>Extension</p>
-                <strong>{report?.name ?? 'QuickBrowse Helper'}</strong>
-              </div>
-              <span className="scan-status">
-                {scanState === 'scanning' ? 'Scanning' : report ? 'Mapped' : 'Ready'}
-              </span>
+              <span className="extension-icon"><span /><span /><span /></span>
+              <div><p>{report?.kind === 'website' ? 'Website' : 'Extension'}</p><strong>{report?.name ?? 'Privacy surface'}</strong></div>
+              <span className="scan-status">{scanState === 'scanning' ? 'Scanning' : report ? 'Mapped' : 'Ready'}</span>
             </div>
-
-            <div className="scan-line">
-              <span className={scanState === 'scanning' ? 'is-scanning' : ''} />
-            </div>
-
+            <div className="scan-line"><span className={scanState === 'scanning' ? 'is-scanning' : ''} /></div>
             <div className="permission-list">
-              {(report?.permissions ?? profiles.risky.permissions).slice(0, 3).map((item) => {
-                const Icon = item.icon
-                return (
-                  <div className="permission-row" key={item.title}>
-                    <span className="permission-icon">
-                      <Icon size={16} strokeWidth={1.8} />
-                    </span>
-                    <span>{item.title}</span>
-                    <small>{item.level}</small>
-                  </div>
-                )
+              {(report?.signals ?? demos[0].signals).slice(0, 3).map((signal) => {
+                const Icon = iconMap[signal.iconKey] ?? CircleAlert
+                return <div className="permission-row" key={signal.title}>
+                  <span className="permission-icon"><Icon size={16} strokeWidth={1.8} /></span>
+                  <span>{signal.title}</span><small>{signal.level}</small>
+                </div>
               })}
             </div>
           </article>
-
           <aside className="signal-panel signal-panel-left">
-            <span className="panel-kicker">Permission surface</span>
-            <strong>{report ? `${report.permissions.length + 5} requests` : '14 requests'}</strong>
-            <p>{report ? 'Signals mapped' : '3 need a closer look'}</p>
+            <span className="panel-kicker">Privacy surface</span>
+            <strong>{report ? `${report.signals.length} signals` : 'Ready to scan'}</strong>
+            <p>{report?.kind === 'website' ? 'Consent and trackers' : 'Permissions and host access'}</p>
           </aside>
-
           <aside className="signal-panel signal-panel-right">
-            <span className={`risk-dot ${report?.grade === 'B' ? 'is-low-risk' : ''}`} />
-            <div>
-              <span className="panel-kicker">Risk signal</span>
-              <strong>{report?.grade === 'B' ? 'Expected access' : 'Broad site access'}</strong>
-            </div>
+            <span className={`risk-dot ${report?.grade === 'A' || report?.grade === 'B' ? 'is-low-risk' : ''}`} />
+            <div><span className="panel-kicker">Risk signal</span><strong>{report?.status ?? 'Evidence first'}</strong></div>
           </aside>
-
-          <span className="stage-label stage-label-top">Manifest read</span>
-          <span className="stage-label stage-label-bottom">Signals mapped</span>
+          <span className="stage-label stage-label-top">Signals read</span>
+          <span className="stage-label stage-label-bottom">Context mapped</span>
         </div>
       </section>
 
       <section className="trust-strip">
-        <div>
-          <ShieldCheck size={19} strokeWidth={1.7} />
-          <span>Plain-English permission explanations</span>
-        </div>
-        <div>
-          <LockKeyhole size={19} strokeWidth={1.7} />
-          <span>No extension installation required</span>
-        </div>
-        <div>
-          <CircleAlert size={19} strokeWidth={1.7} />
-          <span>Evidence before recommendations</span>
-        </div>
+        <div><ShieldCheck size={19} strokeWidth={1.7} /><span>Evidence before recommendations</span></div>
+        <div><LockKeyhole size={19} strokeWidth={1.7} /><span>Public information only</span></div>
+        <div><CircleAlert size={19} strokeWidth={1.7} /><span>Plain-English risk context</span></div>
       </section>
 
       {report && (
         <section className="report-section" id="report">
           <div className="report-heading">
-            <div>
-              <p className="eyebrow">Scan report</p>
-              <h2>{report.name}</h2>
-              <p>{report.label}</p>
-            </div>
-
+            <div><p className="eyebrow">Scan report</p><h2>{report.name}</h2><p>{report.label}</p></div>
             <div className={`risk-score risk-${report.grade.toLowerCase()}`}>
-              <span>Risk grade</span>
-              <strong>{report.grade}</strong>
-              <small>{report.score} / 100</small>
+              <span>Risk grade</span><strong>{report.grade}</strong><small>{report.score} / 100</small>
             </div>
           </div>
-
+          <p className="report-source">{report.source || 'Curated CrxRay demonstration profile'}</p>
           <div className="report-summary">
-            <div>
-              <span className={`report-dot risk-${report.grade.toLowerCase()}`} />
-              <strong>{report.status}</strong>
-            </div>
+            <div><span className={`report-dot risk-${report.grade.toLowerCase()}`} /><strong>{report.status}</strong></div>
             <p>{report.summary}</p>
           </div>
-
           <div className="report-grid">
             <article className="findings">
-              <div className="section-title">
-                <p className="eyebrow">Why this was flagged</p>
-                <span>{report.permissions.length} signals</span>
-              </div>
-
-              {report.permissions.map((permission, index) => {
-                const Icon = permission.icon
-                return (
-                  <div className="finding" key={permission.title}>
-                    <span className="finding-number">0{index + 1}</span>
-                    <span className="finding-icon">
-                      <Icon size={18} strokeWidth={1.8} />
-                    </span>
-                    <div>
-                      <strong>{permission.title}</strong>
-                      <p>{permission.detail}</p>
-                    </div>
-                    <span className="severity">{permission.level}</span>
-                  </div>
-                )
+              <div className="section-title"><p className="eyebrow">How it was assessed</p><span>{report.signals.length} signals</span></div>
+              {report.signals.map((signal, index) => {
+                const Icon = iconMap[signal.iconKey] ?? CircleAlert
+                return <div className="finding" key={signal.title}>
+                  <span className="finding-number">0{index + 1}</span>
+                  <span className="finding-icon"><Icon size={18} strokeWidth={1.8} /></span>
+                  <div><strong>{signal.title}</strong><p>{signal.detail}</p></div>
+                  <span className="severity">{signal.level}</span>
+                </div>
               })}
             </article>
-
             <aside className="action-panel">
-              <p className="eyebrow">What to do next</p>
-              <h3>Make a safer choice.</h3>
-              <ol>
-                {report.actions.map((action, index) => (
-                  <li key={action}>
-                    <span className="action-number">0{index + 1}</span>
-                    <span>{action}</span>
-                  </li>
-                ))}
-              </ol>
-              <button type="button" onClick={resetScan}>
-                Scan another extension <ArrowRight size={16} />
-              </button>
+              <p className="eyebrow">What to do next</p><h3>Make a safer choice.</h3>
+              <ol>{actionsFor(report).map((action, index) => <li key={action}><span className="action-number">0{index + 1}</span><span>{action}</span></li>)}</ol>
+              <button type="button" onClick={resetScan}>Scan another item <ArrowRight size={16} /></button>
             </aside>
           </div>
         </section>
@@ -415,83 +322,35 @@ function App() {
 
       <section className="examples-section" id="examples">
         <div className="section-intro">
-          <div>
-            <p className="eyebrow">Curated examples</p>
-            <h2>Compare the context, not just the colour.</h2>
-          </div>
-          <p>
-            These profiles demonstrate how the same kind of permission can be expected
-            for one extension and excessive for another.
-          </p>
+          <div><p className="eyebrow">Curated examples</p><h2>Compare the context, not just the colour.</h2></div>
+          <p>CrxRay uses examples to show why the same access can be expected in one situation and excessive in another.</p>
         </div>
-
         <div className="example-grid">
-          {profileList.map((profile) => (
-            <article className="example-card" key={profile.id}>
-              <div className="example-card-top">
-                <span className={`grade-chip grade-${profile.grade.toLowerCase()}`}>
-                  {profile.grade}
-                </span>
-                <span>{profile.label}</span>
-              </div>
-              <h3>{profile.name}</h3>
-              <p>{profile.summary}</p>
-              <div className="example-card-footer">
-                <span>{profile.permissions.length} explained signals</span>
-                <button type="button" onClick={() => beginScan(profile)}>
-                  Run demo <ArrowRight size={15} />
-                </button>
-              </div>
+          {demos.map((demo) => (
+            <article className="example-card" key={demo.id}>
+              <div className="example-card-top"><span className={`grade-chip grade-${demo.grade.toLowerCase()}`}>{demo.grade}</span><span>{demo.label}</span></div>
+              <h3>{demo.name}</h3><p>{demo.summary}</p>
+              <div className="example-card-footer"><span>{demo.signals.length} explained signals</span><button type="button" onClick={() => runDemo(demo)}>Run demo <ArrowRight size={15} /></button></div>
             </article>
           ))}
         </div>
-
-        <p className="demo-disclosure">
-          Demo profiles are curated for this prototype to show the permission-risk assessment flow.
-        </p>
+        <p className="demo-disclosure">Demo profiles are curated so the core permission-risk flow remains available even when a store page cannot be reached.</p>
       </section>
 
       <section className="history-section" id="history">
         <div className="history-heading">
-          <div>
-            <p className="eyebrow">This device</p>
-            <h2>Recent scans</h2>
-          </div>
-
-          {history.length > 0 && (
-            <button className="clear-history" type="button" onClick={() => setHistory([])}>
-              <Trash2 size={14} />
-              Clear history
-            </button>
-          )}
+          <div><p className="eyebrow">This device</p><h2>Recent scans</h2></div>
+          {history.length > 0 && <button className="clear-history" type="button" onClick={() => setHistory([])}><Trash2 size={14} />Clear history</button>}
         </div>
-
         {history.length === 0 ? (
-          <div className="empty-history">
-            <Clock3 size={21} strokeWidth={1.6} />
-            <div>
-              <strong>No scans saved yet.</strong>
-              <p>Your recent CrxRay reports stay on this device only.</p>
-            </div>
-          </div>
+          <div className="empty-history"><Clock3 size={21} strokeWidth={1.6} /><div><strong>No scans saved yet.</strong><p>Your recent CrxRay reports stay on this device only.</p></div></div>
         ) : (
           <div className="history-list">
             {history.map((entry) => (
-              <button
-                className="history-row"
-                type="button"
-                key={entry.id}
-                onClick={() => viewHistoryReport(entry)}
-              >
-                <span className={`grade-chip grade-${entry.grade.toLowerCase()}`}>
-                  {entry.grade}
-                </span>
-                <span className="history-name">
-                  <strong>{entry.name}</strong>
-                  <small>{entry.status}</small>
-                </span>
-                <span className="history-time">{formatTime(entry.scannedAt)}</span>
-                <ArrowRight size={16} />
+              <button className="history-row" type="button" key={entry.id} onClick={() => { setReport(entry.report); setScanState('complete'); window.setTimeout(() => document.querySelector('#report')?.scrollIntoView({ behavior: 'smooth' }), 60) }}>
+                <span className={`grade-chip grade-${entry.report.grade.toLowerCase()}`}>{entry.report.grade}</span>
+                <span className="history-name"><strong>{entry.report.name}</strong><small>{entry.report.status}</small></span>
+                <span className="history-time">{new Date(entry.scannedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><ArrowRight size={16} />
               </button>
             ))}
           </div>
@@ -501,11 +360,8 @@ function App() {
       <section className="method-section" id="about">
         <p className="eyebrow">Built for safer choices</p>
         <div className="method-heading">
-          <h2>Security details should not require a security degree.</h2>
-          <p>
-            A permission can sound harmless and still give an extension wide access.
-            CrxRay turns technical requests into a report you can act on.
-          </p>
+          <h2>Privacy details should not require a security degree.</h2>
+          <p>CrxRay checks public browser-extension manifests and public website source signals. It helps people pause, understand the evidence, and choose deliberately.</p>
         </div>
       </section>
     </main>

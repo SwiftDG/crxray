@@ -1231,3 +1231,54 @@
     grid-row: 1 / span 2;
   }
 }
+.scanner-modes {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 30px;
+  padding: 4px;
+  border: 1px solid #353330;
+  background: #101010;
+}
+
+.scanner-modes button {
+  padding: 8px 11px;
+  border: 0;
+  color: #88837b;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scanner-modes button.active {
+  color: #f4f1ea;
+  background: #262522;
+}
+
+.report-source {
+  margin: 16px 0 0;
+  color: #77736e;
+  font-size: 10px;
+}
+
+.risk-score.risk-a {
+  border-color: #3d5944;
+  background: #101610;
+}
+
+.risk-score.risk-a strong {
+  color: #8cc69a;
+}
+
+.report-dot.risk-a {
+  background: #8cc69a;
+}
+
+@media (max-width: 580px) {
+  .scanner-modes {
+    width: 100%;
+  }
+
+  .scanner-modes button {
+    flex: 1;
+  }
+}
